@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Activity, 
@@ -38,8 +37,14 @@ const App: React.FC = () => {
   const wakeLockRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // 音声フィードバック（計測開始・終了の合図）
-  const playSound = (type: 'start' | 'stop') => {
+  // フィードバック（音と振動）
+  const triggerFeedback = (type: 'start' | 'stop') => {
+    // 振動フィードバック
+    if ('vibrate' in navigator) {
+      navigator.vibrate(type === 'start' ? 50 : [50, 50, 50]);
+    }
+
+    // 音声フィードバック
     try {
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -55,24 +60,18 @@ const App: React.FC = () => {
       if (type === 'start') {
         osc.frequency.setValueAtTime(1000, ctx.currentTime);
         gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+      } else if (type === 'stop') {
+        osc.frequency.setValueAtTime(600, ctx.currentTime);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
         osc.start();
         osc.stop(ctx.currentTime + 0.5);
-      } else if (type === 'stop') {
-        [0, 0.15, 0.3].forEach((offset, i) => {
-          const o = ctx.createOscillator();
-          const g = ctx.createGain();
-          o.connect(g);
-          g.connect(ctx.destination);
-          o.frequency.setValueAtTime(i === 2 ? 800 : 600, ctx.currentTime + offset);
-          g.gain.setValueAtTime(0.2, ctx.currentTime + offset);
-          g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + offset + 0.1);
-          o.start(ctx.currentTime + offset);
-          o.stop(ctx.currentTime + offset + 0.1);
-        });
       }
     } catch (e) {
-      console.error("Audio error", e);
+      console.error("Audio feedback error", e);
     }
   };
 
@@ -105,6 +104,7 @@ const App: React.FC = () => {
       z: acc.z || 0
     };
 
+    // 画面更新は30fps程度に制限してブラウザの負荷を下げる
     if (now - lastDisplayUpdateRef.current > 33) {
       setCurrentValues({ ...latestSensorValueRef.current });
       if (isRecording) {
@@ -117,11 +117,9 @@ const App: React.FC = () => {
   const startSampling = useCallback(() => {
     if (timerRef.current) return;
     timerRef.current = window.setInterval(() => {
-      if (isRecording) {
-        dataRef.current.push({ ...latestSensorValueRef.current, timestamp: Date.now() });
-      }
+      dataRef.current.push({ ...latestSensorValueRef.current, timestamp: Date.now() });
     }, SAMPLING_INTERVAL_MS);
-  }, [isRecording]);
+  }, []);
 
   const stopSampling = useCallback(() => {
     if (timerRef.current) {
@@ -173,16 +171,17 @@ const App: React.FC = () => {
 
   const toggleRecording = () => {
     if (!isRecording) {
-      playSound('start');
-      setRecordedData([]);
+      triggerFeedback('start');
       dataRef.current = [];
+      setRecordedData([]);
       setDisplaySampleCount(0);
       setIsRecording(true);
     } else {
-      playSound('stop');
+      triggerFeedback('stop');
       setIsRecording(false);
-      setRecordedData([...dataRef.current]);
-      setDisplaySampleCount(dataRef.current.length);
+      const finalData = [...dataRef.current];
+      setRecordedData(finalData);
+      setDisplaySampleCount(finalData.length);
     }
   };
 
@@ -199,25 +198,25 @@ const App: React.FC = () => {
     
     const fileName = `ID_${subjectId}_COND_${condition}_${dateStr}_${timeStr}.csv`;
     const targetData = recordedData.length > 0 ? recordedData : dataRef.current;
-    if (targetData.length === 0) return;
     
+    if (targetData.length === 0) return;
     downloadCSV(targetData, fileName);
   };
 
   if (permissionStatus !== 'granted') {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-full max-w-md space-y-8">
+        <div className="w-full max-w-md space-y-8 animate-in fade-in zoom-in duration-500">
           <div className="space-y-4">
             <div className="w-20 h-20 bg-indigo-600 rounded-[2rem] flex items-center justify-center mx-auto shadow-2xl">
               <Activity className="text-white w-10 h-10" />
             </div>
-            <h1 className="text-2xl font-black text-slate-900">MotionLogger Pro</h1>
-            <p className="text-slate-500 text-sm italic px-8">腰部装着・歩行解析用<br/>(100Hz / 重力補正済)</p>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">MotionLogger Pro</h1>
+            <p className="text-slate-500 text-sm italic px-8">腰部装着・歩行解析用<br/>(100Hz / 重力補正済 / CSV出力)</p>
           </div>
           <button 
             onClick={handleInitialSetup}
-            className="w-full bg-slate-900 text-white font-black py-5 rounded-3xl shadow-xl flex items-center justify-center gap-3 text-lg active:scale-95 transition-transform"
+            className="w-full bg-slate-900 text-white font-black py-5 rounded-3xl shadow-xl flex items-center justify-center gap-3 text-lg active:scale-95 transition-all active:bg-indigo-600"
           >
             センサーと音声を許可
             <ChevronRight className="w-5 h-5" />
@@ -228,15 +227,15 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col pb-44">
+    <div className="min-h-screen bg-slate-50 flex flex-col pb-44 animate-in fade-in duration-300">
       <header className="bg-white/90 backdrop-blur-md border-b border-slate-200 px-6 py-4 sticky top-0 z-40">
         <div className="max-w-md mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Activity className="text-indigo-600 w-5 h-5" />
             <h1 className="font-black text-slate-900 text-sm tracking-tight">MotionLogger</h1>
           </div>
-          <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-colors ${
-            isRecording ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+          <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
+            isRecording ? 'bg-red-50 text-red-600 border border-red-100 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
           }`}>
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
@@ -254,7 +253,7 @@ const App: React.FC = () => {
               <Settings className="w-3 h-3 text-indigo-500" /> Experiment Settings
             </h3>
             <div className="text-[9px] font-bold text-emerald-500 flex items-center gap-1">
-              <Volume2 className="w-3 h-3" /> Audio Feedback Enabled
+              <Volume2 className="w-3 h-3" /> Haptics & Audio ON
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4 pt-1">
@@ -264,10 +263,11 @@ const App: React.FC = () => {
               </label>
               <input 
                 type="text" 
+                inputMode="numeric"
                 value={subjectId} 
                 onChange={(e) => setSubjectId(e.target.value)}
                 disabled={isRecording}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-base font-bold outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-base font-bold outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 transition-all"
                 placeholder="001"
               />
             </div>
@@ -280,7 +280,7 @@ const App: React.FC = () => {
                 value={condition} 
                 onChange={(e) => setCondition(e.target.value)}
                 disabled={isRecording}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-base font-bold outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-base font-bold outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 transition-all"
                 placeholder="A"
               />
             </div>

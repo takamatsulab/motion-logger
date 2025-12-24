@@ -1,18 +1,24 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MotionLog">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2103/2103633.png">
     <title>MotionLogger Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+      :root {
+        --sat: env(safe-area-inset-top);
+        --sab: env(safe-area-inset-bottom);
+      }
       body {
-        padding-top: env(safe-area-inset-top);
-        padding-bottom: env(safe-area-inset-bottom);
+        padding-top: var(--sat);
+        padding-bottom: var(--sab);
+        -webkit-tap-highlight-color: transparent;
+        overscroll-behavior-y: none; /* 計測中の誤操作による更新を防止 */
       }
     </style>
 <script type="importmap">
